@@ -6,6 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
+)
+
+var (
+	clients = make(map[net.Conn]bool)
+	mutex   = &sync.Mutex{}
 )
 
 func StartServer() error {
@@ -28,22 +34,41 @@ func StartServer() error {
 			continue
 		}
 
+		mutex.Lock()
+		clients[conn] = true
+		mutex.Unlock()
+
 		go handleConnection(conn)
 	}
 }
 
 func handleConnection(conn net.Conn) {
+
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
 
+	defer func() {
+		mutex.Lock()
+		delete(clients, conn)
+		mutex.Unlock()
+	}()
+
 	for scanner.Scan() {
 		clientMessage := scanner.Text()
-		fmt.Printf("%s\n", clientMessage)
-
-		if _, err := conn.Write([]byte("Message received.\n")); err != nil {
-			log.Printf("Error writing to client: %v", err)
+		fmt.Printf("Received: %s\n", clientMessage)
+		mutex.Lock()
+		for client := range clients {
+			if client != conn {
+				_, err := client.Write([]byte(clientMessage + "\n"))
+				if err != nil {
+					log.Printf("Error sending message to client: %v", err)
+					client.Close()
+					delete(clients, client)
+				}
+			}
 		}
+		mutex.Unlock()
 	}
 
 	if err := scanner.Err(); err != nil {
