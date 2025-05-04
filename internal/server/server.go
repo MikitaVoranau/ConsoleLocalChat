@@ -100,26 +100,23 @@ func broadcastMessage(msg string, excludeConn net.Conn) {
 }
 
 func handleFileMessage(conn net.Conn, msg string) {
-	// Удаляем префикс "FILE:"
 	msg = strings.TrimPrefix(msg, "FILE:")
-
-	// Разбиваем по символу | на 4 части
 	parts := strings.SplitN(msg, "|", 4)
 	if len(parts) < 4 {
 		log.Printf("Invalid file metadata format")
 		return
 	}
 
-	senderNickname := parts[0]
+	sender := parts[0]
 	timestamp := parts[1]
 	filename := parts[2]
 	filesize, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		log.Printf("Error parsing file size: %v", err)
+	if err != nil || filesize <= 0 {
+		log.Printf("Invalid file size: %v", err)
 		return
 	}
 
-	// Читаем бинарные данные файла
+	// Читаем ровно filesize байт
 	fileData := make([]byte, filesize)
 	_, err = io.ReadFull(conn, fileData)
 	if err != nil {
@@ -127,27 +124,26 @@ func handleFileMessage(conn net.Conn, msg string) {
 		return
 	}
 
-	// Рассылаем уведомление о файле
-	broadcastMessage(fmt.Sprintf("%s (%s) отправил файл: %s\n", senderNickname, timestamp, filename), conn)
+	broadcastFile(sender, timestamp, filename, filesize, fileData)
+}
 
-	// Рассылаем сам файл
+func broadcastFile(sender, timestamp, filename string, filesize int64, fileData []byte) {
+	meta := fmt.Sprintf("FILE:%s|%s|%s|%d\n", sender, timestamp, filename, filesize)
+
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	meta := fmt.Sprintf("FILE:%s|%s|%s|%d\n", senderNickname, timestamp, filename, filesize)
 	for _, client := range clients {
-		if client.conn != conn {
-			_, err := client.conn.Write([]byte(meta))
-			if err != nil {
-				log.Printf("Error sending metadata: %v", err)
-				continue
-			}
-			_, err = client.conn.Write(fileData)
-			if err != nil {
-				log.Printf("Error sending file data: %v", err)
-				client.conn.Close()
-				delete(clients, client.conn)
-			}
+		_, err := client.conn.Write([]byte(meta))
+		if err != nil {
+			log.Printf("Ошибка отправки метаданных клиенту %s: %v", client.nickname, err)
+			continue
+		}
+		_, err = client.conn.Write(fileData)
+		if err != nil {
+			log.Printf("Ошибка отправки данных клиенту %s: %v", client.nickname, err)
+			client.conn.Close()
+			delete(clients, client.conn)
 		}
 	}
 }

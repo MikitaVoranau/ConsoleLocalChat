@@ -100,26 +100,40 @@ func StartClient() error {
 }
 
 func sendFile(conn net.Conn, path string, nickname string) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		log.Printf("Ошибка получения информации о файле: %v", err)
+		return
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		log.Printf("Error opening file: %v", err)
+		log.Printf("Ошибка открытия файла: %v", err)
 		return
 	}
 	defer file.Close()
 
-	fileInfo, _ := file.Stat()
-	filename := fileInfo.Name()
-	filesize := fileInfo.Size()
-	timestamp := time.Now().Format("15:04:05")
-
-	meta := fmt.Sprintf("FILE:%s|%s|%s|%d\n", nickname, timestamp, filename, filesize)
-	_, err = conn.Write([]byte(meta))
+	fileData := make([]byte, fileInfo.Size())
+	_, err = io.ReadFull(file, fileData)
 	if err != nil {
-		log.Printf("Error sending metadata: %v", err)
+		log.Printf("Ошибка чтения файла: %v", err)
 		return
 	}
 
-	if _, err := io.Copy(conn, file); err != nil {
-		log.Printf("Error sending file data: %v", err)
+	if len(fileData) == 0 {
+		log.Printf("Предупреждение: файл %s пустой", path)
+		return
+	}
+
+	meta := fmt.Sprintf("FILE:%s|%s|%s|%d\n", nickname, time.Now().Format("15:04:05"), fileInfo.Name(), len(fileData))
+	_, err = conn.Write([]byte(meta))
+	if err != nil {
+		log.Printf("Ошибка отправки метаданных: %v", err)
+		return
+	}
+
+	_, err = conn.Write(fileData)
+	if err != nil {
+		log.Printf("Ошибка отправки данных файла: %v", err)
+		return
 	}
 }

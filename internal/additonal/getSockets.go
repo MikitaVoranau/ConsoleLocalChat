@@ -11,7 +11,7 @@ import (
 func GetIPandPorts() (string, int, error) {
 	reader := bufio.NewReader(os.Stdin)
 	var ip string
-	fmt.Println("Enter IP-address (by default localhost(`127.0.0.1`)) : ")
+	fmt.Println("Enter IP-address : ")
 	ip, err := reader.ReadString('\n')
 	if err != nil {
 		return "", 0, fmt.Errorf("error reading IP address: %v", err)

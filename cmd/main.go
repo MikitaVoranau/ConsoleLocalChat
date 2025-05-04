@@ -21,9 +21,10 @@ func main() {
 	choice = strings.TrimSpace(choice)
 	switch choice {
 	case "1":
-
 		if err := server.StartServer(); err != nil {
-			fmt.Println("Error starting server:", err)
+			fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)
+			fmt.Println("Press Enter to exit...")
+			bufio.NewReader(os.Stdin).ReadString('\n')
 		}
 	case "2":
 		if err := client.StartClient(); err != nil {
